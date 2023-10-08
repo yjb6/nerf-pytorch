@@ -152,6 +152,7 @@ class NeRF(nn.Module):
 # Ray helpers
 def get_rays(H, W, K, c2w):
     i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
+    # torch.meshgrid 返回的两个矩阵维度相等。行数等于第一个，列数等于第二个。两个矩阵中的对应元素拿出来，是坐标ij
     i = i.t()
     j = j.t()
     dirs = torch.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -torch.ones_like(i)], -1)
@@ -164,7 +165,7 @@ def get_rays(H, W, K, c2w):
 
 def get_rays_np(H, W, K, c2w):
     i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')
-    dirs = np.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -np.ones_like(i)], -1)
+    dirs = np.stack([(i-K[0][2])/K[0][0], -(j-K[1][2])/K[1][1], -np.ones_like(i)], -1) #[H,W,3] 从相机原点向场景透过每个像素发射光线
     # Rotate ray directions from camera frame to the world frame
     rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
@@ -174,10 +175,16 @@ def get_rays_np(H, W, K, c2w):
 
 def ndc_rays(H, W, focal, near, rays_o, rays_d):
     # Shift ray origins to near plane
-    t = -(near + rays_o[...,2]) / rays_d[...,2]
-    rays_o = rays_o + t[...,None] * rays_d
-    
+    # print("near:",near,rays_o[...,2].shape,rays_d[...,2].shape)
+    # print("rays_d",rays_d.shape,rays_d)
+    t = -(near + rays_o[...,2]) / rays_d[...,2] # t为将 rays_o移到 —near 需要移动多少个 rays_d 
+    # print("t:",t)
+    # print("t_none",t[...,None].shape,t[...,None])
+    # print("rays_o_origin:",rays_o)
+    rays_o = rays_o + t[...,None] * rays_d #把rays_o的z坐标移到 -near
+    # print("rays_o",rays_o)
     # Projection
+    # 一个相对于相机平面的透视投影。算出来这个点在相机平面下的z坐标，再除以 rays_o[2] ,得到新的坐标
     o0 = -1./(W/(2.*focal)) * rays_o[...,0] / rays_o[...,2]
     o1 = -1./(H/(2.*focal)) * rays_o[...,1] / rays_o[...,2]
     o2 = 1. + 2. * near / rays_o[...,2]
@@ -188,7 +195,8 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     
     rays_o = torch.stack([o0,o1,o2], -1)
     rays_d = torch.stack([d0,d1,d2], -1)
-    
+    # print("rays_o",rays_o)
+    # print("rays_d",rays_d)
     return rays_o, rays_d
 
 
